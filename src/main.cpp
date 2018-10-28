@@ -32,7 +32,7 @@ public:
 	WindowManager * windowManager = nullptr;
 
 	// Our shader program
-	std::shared_ptr<Program> progGBuffer,progFinal;
+	std::shared_ptr<Program> progGBuffer, progSSAO, progFinal;
 
 	// Shape to be used (from obj file)
 	shared_ptr<Shape> shape,sponza;
@@ -42,7 +42,8 @@ public:
 
 	//texture for sim
 	GLuint TextureEarth, TextureMoon;
-	GLuint gColor, gPos, gNormal, fb, depth_rb;
+	GLuint gFBO, gColor, gPos, gNormal, depth_rb;
+	GLuint ssaoFBO, ssaoColor;
 
 	GLuint VertexArrayIDBox, VertexBufferIDBox, VertexBufferTex;
 	
@@ -148,6 +149,25 @@ public:
 		progGBuffer->addAttribute("vertPos");
 		progGBuffer->addAttribute("vertNor");
 		progGBuffer->addAttribute("vertTex");
+
+		//progSSAO = make_shared<Program>();
+		//progSSAO->setVerbose(true);
+		//progSSAO->setShaderNames(resourceDirectory + "/ssao_vert.glsl", resourceDirectory + "/ssao_frag.glsl");
+		//if (!progSSAO->init())
+		//{
+		//	std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
+		//	exit(1);
+		//}
+		//progSSAO->init();
+		//progSSAO->addUniform("P");
+		//progSSAO->addUniform("V");
+		//progSSAO->addUniform("M");
+		//progSSAO->addUniform("campos");
+		//progSSAO->addUniform("kernSamples");
+		//progSSAO->addAttribute("vertPos");
+		//progSSAO->addAttribute("vertNor");
+		//progSSAO->addAttribute("vertTex");
+
 
 
 		progFinal = make_shared<Program>();
@@ -277,11 +297,15 @@ public:
 		//glUniform1i(Tex1Location, 0);
 		//glUniform1i(Tex2Location, 1);
 
-
+		/***************************************************
+		/ Generate G-Buffer FBO
+		/	- Used to store information from gBuffer shaders
+		/	--- to be used in ssao shader (color, pos, normal)
+		***************************************************/
 		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
-		glGenFramebuffers(1, &fb);
+		glGenFramebuffers(1, &gFBO);
 		glActiveTexture(GL_TEXTURE0);
-		glBindFramebuffer(GL_FRAMEBUFFER, fb);
+		glBindFramebuffer(GL_FRAMEBUFFER, gFBO);
 		//RGBA8 2D texture, 24 bit depth texture, 256x256
 		glGenTextures(1, &gColor);
 		glBindTexture(GL_TEXTURE_2D, gColor);
@@ -323,17 +347,99 @@ public:
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rb);
 		//-------------------------
 		//Does the GPU support current FBO configuration?
-
 		
-		int Tex1Loc = glGetUniformLocation(progFinal->pid, "gColor");//tex, tex2... sampler in the fragment shader
+		// Created Textures gColor, gPos, gNormal
+		//glUseProgram(progSSAO->pid);
+		//int Tex1Loc = glGetUniformLocation(progSSAO->pid, "gColor");
+		//int Tex2Loc = glGetUniformLocation(progSSAO->pid, "gPos");
+		//int Tex3Loc = glGetUniformLocation(progSSAO->pid, "gNormal");
+		//
+		//glUniform1i(Tex1Loc, 0);
+		//glUniform1i(Tex2Loc, 1);
+		//glUniform1i(Tex3Loc, 2);
+
+		glUseProgram(progFinal->pid);
+		int Tex1Loc = glGetUniformLocation(progFinal->pid, "gColor");
 		int Tex2Loc = glGetUniformLocation(progFinal->pid, "gPos");
 		int Tex3Loc = glGetUniformLocation(progFinal->pid, "gNormal");
-		glUseProgram(progFinal->pid);
 		glUniform1i(Tex1Loc, 0);
 		glUniform1i(Tex2Loc, 1);
 		glUniform1i(Tex3Loc, 2);
 
 		GLenum status;
+		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		switch (status)
+		{
+		case GL_FRAMEBUFFER_COMPLETE:
+			cout << "status framebuffer: good";
+			break;
+		default:
+			cout << "status framebuffer: bad!!!!!!!!!!!!!!!!!!!!!!!!!";
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		/***********************
+		/ Create Sample Kernels
+		************************/
+		// Add points to the hemisphere
+		std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between 0.0 - 1.0
+		std::default_random_engine generator;
+		vector<vec3> sample_kernal;
+
+		int count = 10;
+		for (int i = 0; i < count; i++) {
+			vec3 sample = vec3(
+				randomFloats(generator) * 2.0 - 1.0, 
+				randomFloats(generator) * 2.0 - 1.0, 
+				randomFloats(generator));
+
+			sample = normalize(sample);
+			//float scale = (float)i / (count * 1.0f);
+			sample = pow(sample, vec3(2.0f));	// push samples closer to the center of hemisphere
+			sample_kernal.push_back(sample);
+		}
+
+		/******************************
+		/ Create Random Rotation Noise
+		******************************/
+		std::vector<glm::vec3> ssaoNoise;
+		for (unsigned int i = 0; i < 16; i++)
+		{
+			glm::vec3 noise(
+				randomFloats(generator) * 2.0 - 1.0,
+				randomFloats(generator) * 2.0 - 1.0,
+				0.0f);
+			ssaoNoise.push_back(noise);
+		}
+
+		//unsigned int noiseTexture;
+		//glGenTextures(1, &noiseTexture);
+		//glBindTexture(GL_TEXTURE_2D, noiseTexture);
+		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+
+		/***************************************************
+		/ Generate SSAO FBO
+		/	- Used to store information from SSAO shaders 
+		/	--- to be used in lighting shader (occlusion values)
+		***************************************************/
+		//glGenFramebuffers(1, &ssaoFBO);
+		//glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+
+		//unsigned int ssaoOcclusionVals;
+		//glGenTextures(1, &ssaoOcclusionVals);
+		//glBindTexture(GL_TEXTURE_2D, ssaoOcclusionVals);
+		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		//glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoOcclusionVals, 0);
+
+
 		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		switch (status)
 		{
@@ -393,7 +499,7 @@ public:
 	}
 	void render_to_texture() // aka render to framebuffer
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, fb);
+		glBindFramebuffer(GL_FRAMEBUFFER, gFBO);
 		GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
 		glDrawBuffers(3, buffers);
 		double frametime = get_last_elapsed_time();
@@ -433,23 +539,48 @@ public:
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 
+	// SSAO shaders will use data from gFBO to calculate occlusion values
+	// then render those values into a texture
 	void render_SSAO() {
+		// Setup textures this render pass will draw into
+		//glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+		//GLenum buffers[] = {GL_COLOR_ATTACHMENT0};
+		//glDrawBuffers(1, buffers);
 
-		// Add points to the hemisphere
-		std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between 0.0 - 1.0
-		std::default_random_engine gen;
-		vector<vec3> sample_kernal;
+		int width, height;
+		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
+		float aspect = width / (float)height;
+		glViewport(0, 0, width, height);
 
-		int count = 10;
-		for (int i = 0; i < count; i++) {
-			vec3 sample = vec3(randomFloats(gen) * 2.0 - 1.0, randomFloats(gen) * 2.0 - 1.0, randomFloats(gen));
+		auto P = std::make_shared<MatrixStack>();
+		P->pushMatrix();
+		P->perspective(70., width, height, 0.1, 100.0f);
+		glm::mat4 M, V, S, T;
+		V = glm::mat4(1);
 
-			sample = normalize(sample);
-			//float scale = (float)i / (count * 1.0f);
-			sample = pow(sample, vec3(2.0f));	// push samples closer to the center of hemisphere
-			sample_kernal.push_back(sample);
-		}
+		// Clear framebuffer.
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		progSSAO->bind();
+		// bind program
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, gColorTexture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, gPosTexure);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, gNormalTexture);
+
+		// draw
+		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
+		glUniformMatrix4fv(progSSAO->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
+		glUniformMatrix4fv(progSSAO->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+		glUniformMatrix4fv(progSSAO->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		glUniform3fv(progSSAO->getUniform("samples"), 10, GL_FALSE, &kernSamps[0].x);
+		glBindVertexArray(VertexArrayIDBox);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		progSSAO->unbind();
 
 	}
 
@@ -486,6 +617,7 @@ int main(int argc, char **argv)
 	{
 		// Render scene.
 		application->render_to_texture();
+		//application->render_SSAO();
 		application->render_to_screen();
 		
 		// Swap front and back buffers.
