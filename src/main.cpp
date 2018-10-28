@@ -43,7 +43,7 @@ public:
 	//texture for sim
 	GLuint TextureEarth, TextureMoon;
 	GLuint gFBO, gColor, gPos, gNormal, depth_rb;
-	GLuint ssaoFBO, ssaoColor;
+	GLuint ssaoFBO, texOcclusion;
 
 	GLuint VertexArrayIDBox, VertexBufferIDBox, VertexBufferTex;
 	
@@ -52,6 +52,11 @@ public:
 
 	// Data necessary to give our triangle to OpenGL
 	GLuint VertexBufferID;
+
+	// Sample Kernels and rotation noise
+	unsigned int noiseTex;
+	vector<vec3> sample_kernal;
+	const int SAMPLECOUNT = 64;
 
 	void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 	{
@@ -150,23 +155,23 @@ public:
 		progGBuffer->addAttribute("vertNor");
 		progGBuffer->addAttribute("vertTex");
 
-		//progSSAO = make_shared<Program>();
-		//progSSAO->setVerbose(true);
-		//progSSAO->setShaderNames(resourceDirectory + "/ssao_vert.glsl", resourceDirectory + "/ssao_frag.glsl");
-		//if (!progSSAO->init())
-		//{
-		//	std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
-		//	exit(1);
-		//}
-		//progSSAO->init();
-		//progSSAO->addUniform("P");
-		//progSSAO->addUniform("V");
-		//progSSAO->addUniform("M");
-		//progSSAO->addUniform("campos");
-		//progSSAO->addUniform("kernSamples");
-		//progSSAO->addAttribute("vertPos");
-		//progSSAO->addAttribute("vertNor");
-		//progSSAO->addAttribute("vertTex");
+		progSSAO = make_shared<Program>();
+		progSSAO->setVerbose(true);
+		progSSAO->setShaderNames(resourceDirectory + "/ssao_vert.glsl", resourceDirectory + "/ssao_frag.glsl");
+		if (!progSSAO->init())
+		{
+			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
+			exit(1);
+		}
+		progSSAO->init();
+		progSSAO->addUniform("P");
+		progSSAO->addUniform("V");
+		progSSAO->addUniform("M");
+		progSSAO->addUniform("campos");
+		progSSAO->addUniform("kernSamp");
+		progSSAO->addAttribute("vertPos");
+		progSSAO->addAttribute("vertNor");
+		progSSAO->addAttribute("vertTex");
 
 
 
@@ -250,52 +255,8 @@ public:
 		sponza->loadMesh(resourceDirectory + "/sponza/sponza.obj", &sponzamtl, stbi_load);
 		sponza->resize();
 		sponza->init();
-
-		//shape = make_shared<Shape>();
-		//shape->loadMesh(resourceDirectory + "/sphere.obj");
-		//shape->resize();
-		//shape->init();
-			
 		
 		int width, height, channels;
-		//char filepath[1000];
-
-		////texture earth diffuse
-		//string str = resourceDirectory + "/earth.jpg";
-		//strcpy(filepath, str.c_str());		
-		//unsigned char* data = stbi_load(filepath, &width, &height, &channels, 4);
-		//glGenTextures(1, &TextureEarth);
-		//glActiveTexture(GL_TEXTURE0);
-		//glBindTexture(GL_TEXTURE_2D, TextureEarth);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		//glGenerateMipmap(GL_TEXTURE_2D);
-		//
-		////texture moon
-		//str = resourceDirectory + "/moon.jpg";
-		//strcpy(filepath, str.c_str());
-		//data = stbi_load(filepath, &width, &height, &channels, 4);
-		//glGenTextures(1, &TextureMoon);
-		//glActiveTexture(GL_TEXTURE0);
-		//glBindTexture(GL_TEXTURE_2D, TextureMoon);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		//glGenerateMipmap(GL_TEXTURE_2D);
-		//
-		////[TWOTEXTURES]
-		////set the 2 textures to the correct samplers in the fragment shader:
-		//GLuint Tex1Location = glGetUniformLocation(progGBuffer->pid, "tex");//tex, tex2... sampler in the fragment shader
-		//GLuint Tex2Location = glGetUniformLocation(progGBuffer->pid, "tex2");
-		//// Then bind the uniform samplers to texture units:
-		//glUseProgram(progGBuffer->pid);
-		//glUniform1i(Tex1Location, 0);
-		//glUniform1i(Tex2Location, 1);
 
 		/***************************************************
 		/ Generate G-Buffer FBO
@@ -317,7 +278,6 @@ public:
 		glGenerateMipmap(GL_TEXTURE_2D);			
 
 		glGenTextures(1, &gPos);
-		//glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, gPos);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -326,7 +286,6 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_BGRA, GL_FLOAT, NULL);
 
 		glGenTextures(1, &gNormal);
-		//glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, gNormal);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -347,17 +306,8 @@ public:
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rb);
 		//-------------------------
 		//Does the GPU support current FBO configuration?
-		
-		// Created Textures gColor, gPos, gNormal
-		//glUseProgram(progSSAO->pid);
-		//int Tex1Loc = glGetUniformLocation(progSSAO->pid, "gColor");
-		//int Tex2Loc = glGetUniformLocation(progSSAO->pid, "gPos");
-		//int Tex3Loc = glGetUniformLocation(progSSAO->pid, "gNormal");
-		//
-		//glUniform1i(Tex1Loc, 0);
-		//glUniform1i(Tex2Loc, 1);
-		//glUniform1i(Tex3Loc, 2);
 
+		// The below will change.
 		glUseProgram(progFinal->pid);
 		int Tex1Loc = glGetUniformLocation(progFinal->pid, "gColor");
 		int Tex2Loc = glGetUniformLocation(progFinal->pid, "gPos");
@@ -384,10 +334,8 @@ public:
 		// Add points to the hemisphere
 		std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between 0.0 - 1.0
 		std::default_random_engine generator;
-		vector<vec3> sample_kernal;
 
-		int count = 10;
-		for (int i = 0; i < count; i++) {
+		for (int i = 0; i < SAMPLECOUNT; i++) {
 			vec3 sample = vec3(
 				randomFloats(generator) * 2.0 - 1.0, 
 				randomFloats(generator) * 2.0 - 1.0, 
@@ -402,42 +350,48 @@ public:
 		/******************************
 		/ Create Random Rotation Noise
 		******************************/
-		std::vector<glm::vec3> ssaoNoise;
+		std::vector<glm::vec3> rotationNoise;
 		for (unsigned int i = 0; i < 16; i++)
 		{
 			glm::vec3 noise(
 				randomFloats(generator) * 2.0 - 1.0,
 				randomFloats(generator) * 2.0 - 1.0,
 				0.0f);
-			ssaoNoise.push_back(noise);
+			rotationNoise.push_back(noise);
 		}
 
-		//unsigned int noiseTexture;
-		//glGenTextures(1, &noiseTexture);
-		//glBindTexture(GL_TEXTURE_2D, noiseTexture);
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glGenTextures(1, &noiseTex);
+		glBindTexture(GL_TEXTURE_2D, noiseTex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &rotationNoise[0]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+		// prog will use the following textures (gPos, gNormal, gNoise)
+		glUseProgram(progSSAO->pid);
+		Tex1Loc = glGetUniformLocation(progSSAO->pid, "gPos");
+		Tex2Loc = glGetUniformLocation(progSSAO->pid, "gNormal");
+		Tex3Loc = glGetUniformLocation(progSSAO->pid, "noiseTex");
+		glUniform1i(Tex1Loc, 0);
+		glUniform1i(Tex2Loc, 1);
+		glUniform1i(Tex3Loc, 2);
 
 		/***************************************************
 		/ Generate SSAO FBO
 		/	- Used to store information from SSAO shaders 
 		/	--- to be used in lighting shader (occlusion values)
 		***************************************************/
-		//glGenFramebuffers(1, &ssaoFBO);
-		//glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+		glGenFramebuffers(1, &ssaoFBO);
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
 
-		//unsigned int ssaoOcclusionVals;
-		//glGenTextures(1, &ssaoOcclusionVals);
-		//glBindTexture(GL_TEXTURE_2D, ssaoOcclusionVals);
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RGB, GL_FLOAT, NULL);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glGenTextures(1, &texOcclusion);
+		glBindTexture(GL_TEXTURE_2D, texOcclusion);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-		//glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoOcclusionVals, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texOcclusion, 0);
 
 
 		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -461,42 +415,6 @@ public:
 		return difference;
 		}
 	//*************************************
-	void render_to_screen()
-	{
-		// Get current frame buffer size.
-
-		int width, height;
-		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
-		float aspect = width / (float)height;
-		glViewport(0, 0, width, height);
-
-		auto P = std::make_shared<MatrixStack>();
-		P->pushMatrix();	
-		P->perspective(70., width, height, 0.1, 100.0f);
-		glm::mat4 M,V,S,T;		
-	
-		V = glm::mat4(1);
-		
-		// Clear framebuffer.
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		
-
-		progFinal->bind();
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, gColor);
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, gPos);
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, gNormal);
-		M = glm::scale(glm::mat4(1),glm::vec3(1.2,1,1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
-		glUniformMatrix4fv(progFinal->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
-		glUniformMatrix4fv(progFinal->getUniform("V"), 1, GL_FALSE, &V[0][0]);
-		glUniformMatrix4fv(progFinal->getUniform("M"), 1, GL_FALSE, &M[0][0]);
-		glBindVertexArray(VertexArrayIDBox);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		progFinal->unbind();
-		
-	}
 	void render_to_texture() // aka render to framebuffer
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, gFBO);
@@ -530,7 +448,6 @@ public:
 		
 		//done, unbind stuff
 		progGBuffer->unbind();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindTexture(GL_TEXTURE_2D, gColor);
 		glGenerateMipmap(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, gPos);
@@ -543,9 +460,12 @@ public:
 	// then render those values into a texture
 	void render_SSAO() {
 		// Setup textures this render pass will draw into
-		//glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
-		//GLenum buffers[] = {GL_COLOR_ATTACHMENT0};
-		//glDrawBuffers(1, buffers);
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+		GLenum buffers[] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, buffers);
+
+		// Render this FBO
+		//glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		int width, height;
 		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
@@ -562,25 +482,59 @@ public:
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		progSSAO->bind();
-		// bind program
-
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, gColorTexture);
+		glBindTexture(GL_TEXTURE_2D, gPos);
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, gPosTexure);
+		glBindTexture(GL_TEXTURE_2D, gNormal);
 		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, gNormalTexture);
+		glBindTexture(GL_TEXTURE_2D, noiseTex);
 
-		// draw
 		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
 		glUniformMatrix4fv(progSSAO->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 		glUniformMatrix4fv(progSSAO->getUniform("V"), 1, GL_FALSE, &V[0][0]);
 		glUniformMatrix4fv(progSSAO->getUniform("M"), 1, GL_FALSE, &M[0][0]);
-		glUniform3fv(progSSAO->getUniform("samples"), 10, GL_FALSE, &kernSamps[0].x);
+		glUniform3fv(progSSAO->getUniform("kernSamp"), SAMPLECOUNT, &sample_kernal[0].x);
 		glBindVertexArray(VertexArrayIDBox);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		progSSAO->unbind();
+
+		glBindTexture(GL_TEXTURE_2D, texOcclusion);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+	}
+
+	void render_to_screen()
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// Get current frame buffer size.
+		int width, height;
+		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
+		float aspect = width / (float)height;
+		glViewport(0, 0, width, height);
+
+		auto P = std::make_shared<MatrixStack>();
+		P->pushMatrix();
+		P->perspective(70., width, height, 0.1, 100.0f);
+		glm::mat4 M, V, S, T;
+
+		V = glm::mat4(1);
+
+		// Clear framebuffer.
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		progFinal->bind();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texOcclusion);
+		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
+		glUniformMatrix4fv(progFinal->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
+		glUniformMatrix4fv(progFinal->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+		glUniformMatrix4fv(progFinal->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		glBindVertexArray(VertexArrayIDBox);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		progFinal->unbind();
 
 	}
 
@@ -602,7 +556,7 @@ int main(int argc, char **argv)
 	// and GL context, etc.
 
 	WindowManager *windowManager = new WindowManager();
-	windowManager->init(640, 480);
+	windowManager->init(1280, 720);
 	windowManager->setEventCallbacks(application);
 	application->windowManager = windowManager;
 
@@ -617,7 +571,7 @@ int main(int argc, char **argv)
 	{
 		// Render scene.
 		application->render_to_texture();
-		//application->render_SSAO();
+		application->render_SSAO();
 		application->render_to_screen();
 		
 		// Swap front and back buffers.
