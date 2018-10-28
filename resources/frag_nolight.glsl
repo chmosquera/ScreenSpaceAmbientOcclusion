@@ -29,7 +29,7 @@ float partx = 1./640.;
 float party = 1./480.;
 //some extend for a 10 by 10 blurring
 float arr[]={0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216,0.001,0.0001,0.00001,0.000001,0.0,0.0};
-vec3 texturecolor = texture(gNormal, fragTex).rgb;
+vec3 texturecolor = texture(gColor, fragTex).rgb;
 vec2 depthfact = calc_depth_fact(fragTex);
 
 vec3 blurcolor = vec3(0,0,0);
