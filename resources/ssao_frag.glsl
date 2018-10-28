@@ -5,40 +5,23 @@ in vec2 fragTex;
 uniform mat4 P;
 
 // Sent from CPU using glActiveTexture(...)
-uniform sampler2D gPos;
-uniform sampler2D gNormal;
-uniform sampler2D noiseTex;
+uniform sampler2D texPos;
+uniform sampler2D texNormal;
+uniform sampler2D texNoise;
 
 // Array size must match in CPU
 uniform vec3 kernSamp[64];
 int SAMPLESIZE = 64;
 
-
-float CosInterpolate(float v1, float v2, float a)
-	{
-	float angle = a * 3.1415926;
-	float prc = (1.0f - cos(angle)) * 0.5f;
-	return  v1*(1.0f - prc) + v2*prc;
-	}
-vec2 calc_depth_fact(vec2 texcoords)
-	{
-	float depth = texture(gPos, texcoords).b;
-	//some number magic:
-	float processedDepthFact = depth/7.0;
-	processedDepthFact = CosInterpolate(0,5,processedDepthFact);
-	processedDepthFact = pow(processedDepthFact,2);
-	return vec2(depth,processedDepthFact);
-	}
-
 // tile noise texture over screen based on screen dimensions divided by noise size
-const vec2 noiseScale = vec2(1280.0/4.0, 720.0/4.0);
+const vec2 noiseScale = vec2(640.0/4.0, 480.0/4.0);
 
 void main()
 {
-	vec3 pos = texture(gPos, fragTex).rgb;
-	vec3 normal = texture(gNormal, fragTex).rgb;
-	vec3 randVec = texture(noiseTex, fragTex * noiseScale).xyz;  
-	vec2 depthfact = calc_depth_fact(fragTex);
+	vec3 pos = texture(texPos, fragTex).rgb;
+	vec3 normal = texture(texNormal, fragTex).rgb;
+	vec3 randVec = texture(texNoise, fragTex * noiseScale).xyz;  
+	//vec3 randVec = texture(texNoise, fragTex ).xyz;  
 	
 	// TBN - transform vector in tangent-space to view-space
 	vec3 tangent   = normalize(randVec - normal * dot(randVec, normal));
@@ -60,14 +43,13 @@ void main()
 		offset.xyz  = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0  
 
 		// get the sample's depth
-		float sampleDepth = texture(gPos, offset.xy).z; 
+		float sampleDepth = texture(texPos, offset.xy).z; 
 
 		float bias = 0.025;
 
-//		if (sampleDepth > pos.z + bias) {
-//			occlusion += sampleDepth + bias;
-//		}
-		occlusion += (sampleDepth >= sampPos.z + bias ? 1.0 : 0.0);  
+		//occlusion += (sampleDepth >= sampPos.z + bias ? 1.0 : 0.0);  
+		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(pos.z - sampleDepth));
+		occlusion       += (sampleDepth >= sampPos.z + bias ? 1.0 : 0.0) * rangeCheck;  
 	}
 			
 	
