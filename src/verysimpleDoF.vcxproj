@@ -139,6 +139,8 @@
     <ClInclude Include="WindowManager.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\resources\blur_frag.glsl" />
+    <None Include="..\resources\blur_vert.glsl" />
     <None Include="..\resources\frag_nolight.glsl" />
     <None Include="..\resources\simple_frag.glsl" />
     <None Include="..\resources\simple_vert.glsl" />

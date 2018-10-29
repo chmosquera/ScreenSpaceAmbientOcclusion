@@ -32,7 +32,7 @@ public:
 	WindowManager * windowManager = nullptr;
 
 	// Our shader program
-	std::shared_ptr<Program> progGBuffer, progSSAO, progFinal;
+	std::shared_ptr<Program> progGBuffer, progSSAO, progBlur, progFinal;
 
 	// Shape to be used (from obj file)
 	shared_ptr<Shape> shape,sponza;
@@ -41,9 +41,9 @@ public:
 	camera mycam;
 
 	//texture for sim
-	GLuint TextureEarth, TextureMoon;
-	GLuint gFBO, gColor, gPos, gNormal, depth_rb;
-	GLuint ssaoFBO, texOcclusion;
+	GLuint gFBO, TexColor, TexPos, TexNormal, depth_rb;
+	GLuint ssaoFBO, TexSSAO;
+	GLuint blurFBO, TexBlurredSSAO;
 
 	GLuint VertexArrayIDBox, VertexBufferIDBox, VertexBufferTex;
 	
@@ -54,7 +54,7 @@ public:
 	GLuint VertexBufferID;
 
 	// Sample Kernels and rotation noise
-	unsigned int noiseTex;
+	unsigned int TexNoise;
 	vector<vec3> sample_kernal;
 	const int SAMPLECOUNT = 64;
 
@@ -173,7 +173,20 @@ public:
 		progSSAO->addAttribute("vertNor");
 		progSSAO->addAttribute("vertTex");
 
-
+		progBlur = make_shared<Program>();
+		progBlur->setVerbose(true);
+		progBlur->setShaderNames(resourceDirectory + "/blur_vert.glsl", resourceDirectory + "/blur_frag.glsl");
+		if (!progBlur->init())
+		{
+			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
+			exit(1);
+		}
+		progBlur->init();
+		progBlur->addUniform("P");
+		progBlur->addUniform("V");
+		progBlur->addUniform("M");
+		progBlur->addAttribute("vertPos");
+		progBlur->addAttribute("vertTex");
 
 		progFinal = make_shared<Program>();
 		progFinal->setVerbose(true);
@@ -268,8 +281,8 @@ public:
 		glActiveTexture(GL_TEXTURE0);
 		glBindFramebuffer(GL_FRAMEBUFFER, gFBO);
 		//RGBA8 2D texture, 24 bit depth texture, 256x256
-		glGenTextures(1, &gColor);
-		glBindTexture(GL_TEXTURE_2D, gColor);
+		glGenTextures(1, &TexColor);
+		glBindTexture(GL_TEXTURE_2D, TexColor);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -277,16 +290,16 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
 		glGenerateMipmap(GL_TEXTURE_2D);			
 
-		glGenTextures(1, &gPos);
-		glBindTexture(GL_TEXTURE_2D, gPos);
+		glGenTextures(1, &TexPos);
+		glBindTexture(GL_TEXTURE_2D, TexPos);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_BGRA, GL_FLOAT, NULL);
 
-		glGenTextures(1, &gNormal);
-		glBindTexture(GL_TEXTURE_2D, gNormal);
+		glGenTextures(1, &TexNormal);
+		glBindTexture(GL_TEXTURE_2D, TexNormal);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -294,9 +307,9 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_BGRA, GL_FLOAT, NULL);
 		
 		//Attach 2D texture to this FBO
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gColor, 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gPos, 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gNormal, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, TexColor, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, TexPos, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, TexNormal, 0);
 		//-------------------------
 		glGenRenderbuffers(1, &depth_rb);
 		glBindRenderbuffer(GL_RENDERBUFFER, depth_rb);
@@ -309,12 +322,8 @@ public:
 
 		// The below will change.
 		glUseProgram(progFinal->pid);
-		int Tex1Loc = glGetUniformLocation(progFinal->pid, "gColor");
-		int Tex2Loc = glGetUniformLocation(progFinal->pid, "gPos");
-		int Tex3Loc = glGetUniformLocation(progFinal->pid, "gNormal");
+		int Tex1Loc = glGetUniformLocation(progFinal->pid, "texColor");
 		glUniform1i(Tex1Loc, 0);
-		glUniform1i(Tex2Loc, 1);
-		glUniform1i(Tex3Loc, 2);
 
 		GLenum status;
 		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -357,22 +366,24 @@ public:
 				randomFloats(generator) * 2.0 - 1.0,
 				randomFloats(generator) * 2.0 - 1.0,
 				0.0f);
+			
+			//glm::normalize(noise);
 			rotationNoise.push_back(noise);
 		}
 
-		glGenTextures(1, &noiseTex);
-		glBindTexture(GL_TEXTURE_2D, noiseTex);
+		glGenTextures(1, &TexNoise);
+		glBindTexture(GL_TEXTURE_2D, TexNoise);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &rotationNoise[0]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		// prog will use the following textures (gPos, gNormal, gNoise)
+		// prog will use the following textures (TexPos, TexNormal, gNoise)
 		glUseProgram(progSSAO->pid);
-		Tex1Loc = glGetUniformLocation(progSSAO->pid, "gPos");
-		Tex2Loc = glGetUniformLocation(progSSAO->pid, "gNormal");
-		Tex3Loc = glGetUniformLocation(progSSAO->pid, "noiseTex");
+		Tex1Loc = glGetUniformLocation(progSSAO->pid, "texPos");
+		int Tex2Loc = glGetUniformLocation(progSSAO->pid, "texNormal");
+		int Tex3Loc = glGetUniformLocation(progSSAO->pid, "texNoise");
 		glUniform1i(Tex1Loc, 0);
 		glUniform1i(Tex2Loc, 1);
 		glUniform1i(Tex3Loc, 2);
@@ -380,18 +391,41 @@ public:
 		/***************************************************
 		/ Generate SSAO FBO
 		/	- Used to store information from SSAO shaders 
-		/	--- to be used in lighting shader (occlusion values)
+		/	--- to be used in blur shader (occlusion values)
 		***************************************************/
 		glGenFramebuffers(1, &ssaoFBO);
 		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
 
-		glGenTextures(1, &texOcclusion);
-		glBindTexture(GL_TEXTURE_2D, texOcclusion);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+		glGenTextures(1, &TexSSAO);
+		glBindTexture(GL_TEXTURE_2D, TexSSAO);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGB, GL_FLOAT, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texOcclusion, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, TexSSAO, 0);
+
+		/*****************************************************************
+		/ Generate Blur FBO
+		/	- Used to store information from blur shaders
+		/	--- to be used in lighting shader (blurred occlusion texture)
+		*****************************************************************/
+		glGenFramebuffers(1, &blurFBO);
+		glBindFramebuffer(GL_FRAMEBUFFER, blurFBO);
+
+		glGenTextures(1, &TexBlurredSSAO);
+		glBindTexture(GL_TEXTURE_2D, TexBlurredSSAO);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, TexBlurredSSAO, 0);
+
+		glUseProgram(progBlur->pid);
+		Tex1Loc = glGetUniformLocation(progBlur->pid, "texSSAO");
+		glUniform1i(Tex1Loc, 0);
 
 
 		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -448,11 +482,11 @@ public:
 		
 		//done, unbind stuff
 		progGBuffer->unbind();
-		glBindTexture(GL_TEXTURE_2D, gColor);
+		glBindTexture(GL_TEXTURE_2D, TexColor);
 		glGenerateMipmap(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, gPos);
+		glBindTexture(GL_TEXTURE_2D, TexPos);
 		glGenerateMipmap(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, gNormal);
+		glBindTexture(GL_TEXTURE_2D, TexNormal);
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 
@@ -483,11 +517,11 @@ public:
 
 		progSSAO->bind();
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, gPos);
+		glBindTexture(GL_TEXTURE_2D, TexPos);
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, gNormal);
+		glBindTexture(GL_TEXTURE_2D, TexNormal);
 		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, noiseTex);
+		glBindTexture(GL_TEXTURE_2D, TexNoise);
 
 		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
 		glUniformMatrix4fv(progSSAO->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
@@ -499,14 +533,48 @@ public:
 
 		progSSAO->unbind();
 
-		glBindTexture(GL_TEXTURE_2D, texOcclusion);
+		glBindTexture(GL_TEXTURE_2D, TexSSAO);
 		glGenerateMipmap(GL_TEXTURE_2D);
 
+	}
+
+	void render_blurredSSAO() {
+		glBindFramebuffer(GL_FRAMEBUFFER, blurFBO);
+		GLenum buffers[] = { GL_COLOR_ATTACHMENT0 };
+		glDrawBuffers(1, buffers);
+
+		// Clear framebuffer.
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Get current frame buffer size.
+		int width, height;
+		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
+		float aspect = width / (float)height;
+		glViewport(0, 0, width, height);
+		auto P = std::make_shared<MatrixStack>();
+		P->pushMatrix();
+		P->perspective(70., width, height, 0.1, 100.0f);
+		glm::mat4 M, V, S, T;
+		V = glm::mat4(1);
+
+		progBlur->bind();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, TexSSAO);
+		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
+		glUniformMatrix4fv(progBlur->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
+		glUniformMatrix4fv(progBlur->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+		glUniformMatrix4fv(progBlur->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		glBindVertexArray(VertexArrayIDBox);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		progBlur->unbind();
 	}
 
 	void render_to_screen()
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		// Clear framebuffer.
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// Get current frame buffer size.
 		int width, height;
@@ -514,19 +582,17 @@ public:
 		float aspect = width / (float)height;
 		glViewport(0, 0, width, height);
 
+
 		auto P = std::make_shared<MatrixStack>();
 		P->pushMatrix();
 		P->perspective(70., width, height, 0.1, 100.0f);
 		glm::mat4 M, V, S, T;
-
 		V = glm::mat4(1);
-
-		// Clear framebuffer.
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		progFinal->bind();
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texOcclusion);
+		//glBindTexture(GL_TEXTURE_2D, TexBlurredSSAO);
+		glBindTexture(GL_TEXTURE_2D, TexNoise);
 		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
 		glUniformMatrix4fv(progFinal->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 		glUniformMatrix4fv(progFinal->getUniform("V"), 1, GL_FALSE, &V[0][0]);
@@ -556,7 +622,7 @@ int main(int argc, char **argv)
 	// and GL context, etc.
 
 	WindowManager *windowManager = new WindowManager();
-	windowManager->init(1280, 720);
+	windowManager->init(640, 480);
 	windowManager->setEventCallbacks(application);
 	application->windowManager = windowManager;
 
@@ -572,6 +638,7 @@ int main(int argc, char **argv)
 		// Render scene.
 		application->render_to_texture();
 		application->render_SSAO();
+		application->render_blurredSSAO();
 		application->render_to_screen();
 		
 		// Swap front and back buffers.
