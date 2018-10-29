@@ -19,25 +19,10 @@ void main()
 {
 	vec3 normal = normalize(fragNor);
 	vec3 texturecolor = texture(tex, fragTex).rgb;
-	//color.rgb = normal;
-	//color.a=1;
-	//return;
-	//diffuse light
-	vec3 lp = vec3(100,100,100);
-	vec3 ld = normalize(lp - fragPos);
-	float light = dot(ld,normal);	
-	light = clamp(light,0,1);
-
-	//specular light
-	vec3 camvec = normalize(campos - fragPos);
-	vec3 h = normalize(camvec+ld);
-	float spec = pow(dot(h,normal),5);
-	spec = clamp(spec,0,1)*0.3;
 	
-	color.rgb = texturecolor *light + vec3(1,1,1)*spec;
+	color.rgb = texturecolor;
 	color.a=1;
 	viewpos = fragViewPos;
-	viewpos.z*=-1;
+	//viewpos.z*=-1;
 	gNormal = vec4(normal, 1.0);
-	//viewpos = vec4(normal, 1.0);
 }

@@ -37,12 +37,6 @@
     <None Include="..\resources\simple_vert.glsl">
       <Filter>shader</Filter>
     </None>
-    <None Include="..\resources\vert.glsl">
-      <Filter>shader</Filter>
-    </None>
-    <None Include="..\resources\frag_nolight.glsl">
-      <Filter>shader</Filter>
-    </None>
     <None Include="..\resources\ssao_frag.glsl">
       <Filter>shader</Filter>
     </None>
@@ -53,6 +47,12 @@
       <Filter>shader</Filter>
     </None>
     <None Include="..\resources\blur_vert.glsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="..\resources\light_vert.glsl">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="..\resources\light_frag.glsl">
       <Filter>shader</Filter>
     </None>
   </ItemGroup>

@@ -190,7 +190,7 @@ public:
 
 		progFinal = make_shared<Program>();
 		progFinal->setVerbose(true);
-		progFinal->setShaderNames(resourceDirectory + "/vert.glsl", resourceDirectory + "/frag_nolight.glsl");
+		progFinal->setShaderNames(resourceDirectory + "/light_vert.glsl", resourceDirectory + "/light_frag.glsl");
 		if (!progFinal->init())
 		{
 			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
@@ -200,6 +200,7 @@ public:
 		progFinal->addUniform("P");
 		progFinal->addUniform("V");
 		progFinal->addUniform("M");
+		progFinal->addUniform("campos");
 		progFinal->addAttribute("vertPos");
 		progFinal->addAttribute("vertTex");
 
@@ -323,7 +324,13 @@ public:
 		// The below will change.
 		glUseProgram(progFinal->pid);
 		int Tex1Loc = glGetUniformLocation(progFinal->pid, "texColor");
+		int Tex2Loc = glGetUniformLocation(progFinal->pid, "texPos");
+		int Tex3Loc = glGetUniformLocation(progFinal->pid, "texNormal");
+		int Tex4Loc = glGetUniformLocation(progFinal->pid, "texBlurredSSAO");
 		glUniform1i(Tex1Loc, 0);
+		glUniform1i(Tex2Loc, 1);
+		glUniform1i(Tex3Loc, 2);
+		glUniform1i(Tex4Loc, 3);
 
 		GLenum status;
 		status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -344,14 +351,17 @@ public:
 		std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between 0.0 - 1.0
 		std::default_random_engine generator;
 
-		for (int i = 0; i < SAMPLECOUNT; i++) {
+		for (int i = 0; i < SAMPLECOUNT; ++i) {
 			vec3 sample = vec3(
 				randomFloats(generator) * 2.0 - 1.0, 
 				randomFloats(generator) * 2.0 - 1.0, 
 				randomFloats(generator));
 
 			sample = normalize(sample);
-			//float scale = (float)i / (count * 1.0f);
+
+			// distribute samples within hemisphere
+			sample *= randomFloats(generator);
+
 			sample = pow(sample, vec3(2.0f));	// push samples closer to the center of hemisphere
 			sample_kernal.push_back(sample);
 		}
@@ -367,7 +377,7 @@ public:
 				randomFloats(generator) * 2.0 - 1.0,
 				0.0f);
 			
-			//glm::normalize(noise);
+			noise = normalize(noise);
 			rotationNoise.push_back(noise);
 		}
 
@@ -382,8 +392,8 @@ public:
 		// prog will use the following textures (TexPos, TexNormal, gNoise)
 		glUseProgram(progSSAO->pid);
 		Tex1Loc = glGetUniformLocation(progSSAO->pid, "texPos");
-		int Tex2Loc = glGetUniformLocation(progSSAO->pid, "texNormal");
-		int Tex3Loc = glGetUniformLocation(progSSAO->pid, "texNoise");
+		Tex2Loc = glGetUniformLocation(progSSAO->pid, "texNormal");
+		Tex3Loc = glGetUniformLocation(progSSAO->pid, "texNoise");
 		glUniform1i(Tex1Loc, 0);
 		glUniform1i(Tex2Loc, 1);
 		glUniform1i(Tex3Loc, 2);
@@ -591,12 +601,18 @@ public:
 
 		progFinal->bind();
 		glActiveTexture(GL_TEXTURE0);
-		//glBindTexture(GL_TEXTURE_2D, TexBlurredSSAO);
-		glBindTexture(GL_TEXTURE_2D, TexNoise);
+		glBindTexture(GL_TEXTURE_2D, TexColor);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, TexPos);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, TexNormal);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, TexBlurredSSAO);
 		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
 		glUniformMatrix4fv(progFinal->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 		glUniformMatrix4fv(progFinal->getUniform("V"), 1, GL_FALSE, &V[0][0]);
 		glUniformMatrix4fv(progFinal->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		glUniform3fv(progFinal->getUniform("campos"), 1, &mycam.pos.x);
 		glBindVertexArray(VertexArrayIDBox);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
