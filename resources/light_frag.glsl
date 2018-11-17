@@ -20,7 +20,7 @@ void main()
 	//diffuse light
 
 	vec3 ambient = vec3(fragCol * fragSSAO); // here we add occlusion factor
-	vec3 lp = vec3(0, 0, -0.5);
+	vec3 lp = vec3(100);
 	vec3 ld = normalize(lp - fragPos);
 	float light = dot(ld,fragNor);	
 	light = clamp(light,0,1);
@@ -37,6 +37,9 @@ void main()
 
 	//color.rgb = fragSSAO;
 	color.rgb = ambient * light;// + vec3(1) * spec;
-	color.rgb = fragSSAO;// * light;
+	//color.rgb = fragSSAO;// * light;
+	color.rgb = ambient;
+	//color.rgb = fragSSAO;
+	//color.rgb = fragCol;
 	color.a=1;
 }

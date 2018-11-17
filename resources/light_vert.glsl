@@ -10,5 +10,6 @@ out vec2 fragTex;
 void main()
 {
 gl_Position = P * V * M * vertPos;
+gl_Position = vec4(vertPos.xyz, 1.0);
 fragTex = vertTex;
 }

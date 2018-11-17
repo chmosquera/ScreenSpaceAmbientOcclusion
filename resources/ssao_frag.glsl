@@ -29,7 +29,8 @@ void main()
 	mat3 TBN       = mat3(tangent, bitangent, normal); 
 
 	float occlusion = 0.0;
-	float radius = 1.0;
+	float radius = 0.15;
+	//float radius = 1.0;
 	for(int i = 0; i < SAMPLESIZE; ++i)
 	{
 		// get sample position
@@ -39,8 +40,8 @@ void main()
 		// Transform samples from view-space to screen-space
 		vec4 offset = vec4(sampPos, 1.0);
 		offset      = P * offset;    // from view to clip-space
-		offset.xy /= offset.w;               // perspective divide
-		offset.xy  = offset.xy * 0.5 + 0.5; // transform to range 0.0 - 1.0  
+		offset.xyz /= offset.w;               // perspective divide
+		offset.xyz  = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0  
 
 		// get the sample's depth
 		float sampleDepth = texture(texPos, offset.xy).z; 
@@ -48,7 +49,7 @@ void main()
 		float bias = 0.025;
 
 		//float rangeCheck = smoothstep(0.0, 1.0, radius / abs(pos.z - sampleDepth));
-		 float rangeCheck= abs(pos.z - sampleDepth) < radius ? 1.0 : 0.0;
+		float rangeCheck= abs(pos.z - sampleDepth) < radius ? 1.0 : 0.0;
 		occlusion       += (sampleDepth >= sampPos.z + bias ? 1.0 : 0.0) * rangeCheck;  
 //occlusion       += (sampleDepth >= sampPos.z + bias ? 1.0 : 0.0);
 	}
@@ -57,7 +58,7 @@ void main()
 	occlusion = 1.0 - (occlusion / SAMPLESIZE);
 	//occlusion = pow(occlusion, 2.0);
 
-	color.rgb = vec3(occlusion * occlusion);
+	//color.rgb = vec3(occlusion * occlusion);
 	color.rgb = vec3(occlusion);
 	color.a=1;
 	//better results with HDR!

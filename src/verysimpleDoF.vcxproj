@@ -140,12 +140,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\resources\blur_frag.glsl" />
-    <None Include="..\resources\blur_vert.glsl" />
     <None Include="..\resources\light_frag.glsl" />
     <None Include="..\resources\simple_frag.glsl" />
     <None Include="..\resources\simple_vert.glsl" />
     <None Include="..\resources\ssao_frag.glsl" />
-    <None Include="..\resources\ssao_vert.glsl" />
     <None Include="..\resources\light_vert.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

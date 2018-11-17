@@ -40,13 +40,7 @@
     <None Include="..\resources\ssao_frag.glsl">
       <Filter>shader</Filter>
     </None>
-    <None Include="..\resources\ssao_vert.glsl">
-      <Filter>shader</Filter>
-    </None>
     <None Include="..\resources\blur_frag.glsl">
-      <Filter>shader</Filter>
-    </None>
-    <None Include="..\resources\blur_vert.glsl">
       <Filter>shader</Filter>
     </None>
     <None Include="..\resources\light_vert.glsl">

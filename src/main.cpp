@@ -157,7 +157,7 @@ public:
 
 		progSSAO = make_shared<Program>();
 		progSSAO->setVerbose(true);
-		progSSAO->setShaderNames(resourceDirectory + "/ssao_vert.glsl", resourceDirectory + "/ssao_frag.glsl");
+		progSSAO->setShaderNames(resourceDirectory + "/light_vert.glsl", resourceDirectory + "/ssao_frag.glsl");
 		if (!progSSAO->init())
 		{
 			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
@@ -175,7 +175,7 @@ public:
 
 		progBlur = make_shared<Program>();
 		progBlur->setVerbose(true);
-		progBlur->setShaderNames(resourceDirectory + "/blur_vert.glsl", resourceDirectory + "/blur_frag.glsl");
+		progBlur->setShaderNames(resourceDirectory + "/light_vert.glsl", resourceDirectory + "/blur_frag.glsl");
 		if (!progBlur->init())
 		{
 			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
@@ -224,12 +224,12 @@ public:
 		// front
 		int verccount = 0;
 
-		rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 0.0;
-		rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 0.0;
-		rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0;
-		rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 0.0;
+		rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = 0.0;
+		rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = 0.0;
+		rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0;
+		rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = 0.0;
 		rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0;
-		rectangle_vertices[verccount++] = 0.0, rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0;
+		rectangle_vertices[verccount++] = -1.0, rectangle_vertices[verccount++] = 1.0, rectangle_vertices[verccount++] = 0.0;
 
 
 		//actually memcopy the data - only do this once
@@ -362,7 +362,7 @@ public:
 			// distribute samples within hemisphere
 			sample *= randomFloats(generator);
 
-			sample = pow(sample, vec3(2.0f));	// push samples closer to the center of hemisphere
+			//sample = pow(sample, vec3(2.0f));	// push samples closer to the center of hemisphere
 			sample_kernal.push_back(sample);
 		}
 
@@ -608,6 +608,7 @@ public:
 		glBindTexture(GL_TEXTURE_2D, TexNormal);
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, TexBlurredSSAO);
+		//glBindTexture(GL_TEXTURE_2D, TexSSAO);
 		M = glm::scale(glm::mat4(1), glm::vec3(1.2, 1, 1)) * glm::translate(glm::mat4(1), glm::vec3(-0.5, -0.5, -1));
 		glUniformMatrix4fv(progFinal->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 		glUniformMatrix4fv(progFinal->getUniform("V"), 1, GL_FALSE, &V[0][0]);
